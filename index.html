@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>スパン単価計算機｜管路更生工事 積算</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html,body,#root{height:100%;margin:0;}
+  * { box-sizing: border-box; }
+  body { background:#EEF1F0; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo } = React;
+
+// ---- 簡易アイコン（lucide-react の代わり）----
+const Icon = ({ children, size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const RulerIcon = (p) => <Icon {...p}><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></Icon>;
+const Settings2Icon = (p) => <Icon {...p}><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></Icon>;
+const AlertTriangleIcon = (p) => <Icon {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></Icon>;
+const ChevronDownIcon = (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
+const SunIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></Icon>;
+const MoonIcon = (p) => <Icon {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></Icon>;
+const WrenchIcon = (p) => <Icon {...p}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94Z"/></Icon>;
+
+// ---------------------------------------------------------------------------
+// 価格表データ（管路更生G 資料より転記）
+// ---------------------------------------------------------------------------
+const RAW_TABLE = {
+  250: [{ min: 0.05, max: 100, dayBase: 364300, dayExtra: 2300, dayDrill: 43600, nightBase: 419000, nightExtra: 2600, nightDrill: 50100 }],
+  300: [{ min: 0.05, max: 100, dayBase: 364900, dayExtra: 2500, dayDrill: 43600, nightBase: 419600, nightExtra: 2800, nightDrill: 50100 }],
+  350: [{ min: 0.05, max: 100, dayBase: 365500, dayExtra: 2700, dayDrill: 43600, nightBase: 420300, nightExtra: 3100, nightDrill: 50100 }],
+  380: [{ min: 0.05, max: 100, dayBase: 365500, dayExtra: 2800, dayDrill: 43600, nightBase: 420300, nightExtra: 3200, nightDrill: 50100 }],
+  400: [{ min: 0.05, max: 100, dayBase: 365500, dayExtra: 2900, dayDrill: 43600, nightBase: 420300, nightExtra: 3300, nightDrill: 50100 }],
+  450: [
+    { min: 0.05, max: 42.3, dayBase: 366700, dayExtra: 3000, dayDrill: 43600, nightBase: 421700, nightExtra: 3400, nightDrill: 50100 },
+    { min: 42.4, max: 100, dayBase: 450100, dayExtra: 3200, dayDrill: 43600, nightBase: 517600, nightExtra: 3600, nightDrill: 50100 },
+  ],
+  500: [
+    { min: 0.05, max: 37.7, dayBase: 367300, dayExtra: 3200, dayDrill: 43600, nightBase: 422400, nightExtra: 3600, nightDrill: 50100 },
+    { min: 37.8, max: 100, dayBase: 451900, dayExtra: 3400, dayDrill: 43600, nightBase: 519700, nightExtra: 3900, nightDrill: 50100 },
+  ],
+  600: [
+    { min: 0.05, max: 31.5, dayBase: 367900, dayExtra: 4400, dayDrill: 43600, nightBase: 423100, nightExtra: 5000, nightDrill: 50100 },
+    { min: 31.6, max: 100, dayBase: 412300, dayExtra: 5900, dayDrill: 43600, nightBase: 474200, nightExtra: 6700, nightDrill: 50100 },
+  ],
+  700: [
+    { min: 0.05, max: 37.8, dayBase: 369100, dayExtra: 5500, dayDrill: 43600, nightBase: 424500, nightExtra: 6300, nightDrill: 50100 },
+    { min: 37.9, max: 96.0, dayBase: 462700, dayExtra: 5600, dayDrill: 43600, nightBase: 532100, nightExtra: 6400, nightDrill: 50100 },
+    { min: 96.1, max: 100, dayBase: 565300, dayExtra: 5500, dayDrill: 43600, nightBase: 650100, nightExtra: 6300, nightDrill: 50100 },
+  ],
+  800: [
+    { min: 0.05, max: 33.1, dayBase: 555200, dayExtra: 3400, dayDrill: 43600, nightBase: 638400, nightExtra: 3900, nightDrill: 50100 },
+    { min: 33.2, max: 84.3, dayBase: 648200, dayExtra: 3600, dayDrill: 43600, nightBase: 745400, nightExtra: 4100, nightDrill: 50100 },
+    { min: 84.4, max: 100, dayBase: 753200, dayExtra: 3400, dayDrill: 43600, nightBase: 866100, nightExtra: 3900, nightDrill: 50100 },
+  ],
+  900: [
+    { min: 0.05, max: 29.4, dayBase: 608000, dayExtra: 12600, dayDrill: 47700, nightBase: 699200, nightExtra: 14400, nightDrill: 54800 },
+    { min: 29.5, max: 75.1, dayBase: 701600, dayExtra: 12800, dayDrill: 47700, nightBase: 806800, nightExtra: 14700, nightDrill: 54800 },
+    { min: 75.2, max: 100, dayBase: 779000, dayExtra: 12900, dayDrill: 47700, nightBase: 895800, nightExtra: 14800, nightDrill: 54800 },
+  ],
+  1000: [
+    { min: 0.05, max: 17.8, dayBase: 662600, dayExtra: 13200, dayDrill: 47700, nightBase: 761900, nightExtra: 15100, nightDrill: 54800 },
+    { min: 17.9, max: 55.6, dayBase: 748500, dayExtra: 13500, dayDrill: 47700, nightBase: 860700, nightExtra: 15500, nightDrill: 54800 },
+    { min: 55.7, max: 93.4, dayBase: 839000, dayExtra: 13500, dayDrill: 47700, nightBase: 964800, nightExtra: 15500, nightDrill: 54800 },
+    { min: 93.5, max: 100, dayBase: 951800, dayExtra: 13200, dayDrill: 47700, nightBase: 1094500, nightExtra: 15100, nightDrill: 54800 },
+  ],
+  1100: [
+    { min: 0.05, max: 16.2, dayBase: 663800, dayExtra: 14100, dayDrill: 47700, nightBase: 763300, nightExtra: 16200, nightDrill: 54800 },
+    { min: 16.3, max: 50.6, dayBase: 750200, dayExtra: 14300, dayDrill: 47700, nightBase: 862700, nightExtra: 16400, nightDrill: 54800 },
+    { min: 50.7, max: 85.1, dayBase: 840200, dayExtra: 14300, dayDrill: 47700, nightBase: 966200, nightExtra: 16400, nightDrill: 54800 },
+    { min: 85.2, max: 100, dayBase: 951800, dayExtra: 14100, dayDrill: 47700, nightBase: 1094500, nightExtra: 16200, nightDrill: 54800 },
+  ],
+  1200: [
+    { min: 0.05, max: 14.6, dayBase: 665400, dayExtra: 13600, dayDrill: 47700, nightBase: 765200, nightExtra: 15600, nightDrill: 54800 },
+    { min: 14.7, max: 46.0, dayBase: 751500, dayExtra: 13800, dayDrill: 47700, nightBase: 864200, nightExtra: 15800, nightDrill: 54800 },
+    { min: 46.1, max: 77.4, dayBase: 841700, dayExtra: 13800, dayDrill: 47700, nightBase: 967900, nightExtra: 15800, nightDrill: 54800 },
+    { min: 77.5, max: 100, dayBase: 922600, dayExtra: 14000, dayDrill: 47700, nightBase: 1060900, nightExtra: 16100, nightDrill: 54800 },
+  ],
+  1350: [
+    { min: 0.05, max: 13.0, dayBase: 698000, dayExtra: 15300, dayDrill: 47700, nightBase: 802700, nightExtra: 17500, nightDrill: 54800 },
+    { min: 13.1, max: 41.1, dayBase: 784000, dayExtra: 15600, dayDrill: 47700, nightBase: 901600, nightExtra: 17900, nightDrill: 54800 },
+    { min: 41.2, max: 69.3, dayBase: 874000, dayExtra: 15600, dayDrill: 47700, nightBase: 1005100, nightExtra: 17900, nightDrill: 54800 },
+    { min: 69.4, max: 97.4, dayBase: 964000, dayExtra: 15600, dayDrill: 47700, nightBase: 1108600, nightExtra: 17900, nightDrill: 54800 },
+    { min: 97.5, max: 100, dayBase: 1085600, dayExtra: 15300, dayDrill: 47700, nightBase: 1248400, nightExtra: 17500, nightDrill: 54800 },
+  ],
+  1500: [
+    { min: 0.05, max: 11.7, dayBase: 700400, dayExtra: 17300, dayDrill: 47700, nightBase: 805400, nightExtra: 19800, nightDrill: 54800 },
+    { min: 11.8, max: 37.2, dayBase: 786400, dayExtra: 17700, dayDrill: 47700, nightBase: 904300, nightExtra: 20300, nightDrill: 54800 },
+    { min: 37.3, max: 62.7, dayBase: 876400, dayExtra: 17700, dayDrill: 47700, nightBase: 1007800, nightExtra: 20300, nightDrill: 54800 },
+    { min: 62.8, max: 88.1, dayBase: 910400, dayExtra: 17700, dayDrill: 47700, nightBase: 1046900, nightExtra: 20300, nightDrill: 54800 },
+    { min: 88.2, max: 100, dayBase: 1088300, dayExtra: 17300, dayDrill: 47700, nightBase: 1251500, nightExtra: 19800, nightDrill: 54800 },
+  ],
+};
+
+const DIAMETERS = Object.keys(RAW_TABLE).map(Number).sort((a, b) => a - b);
+const yen = (n) => "¥" + Math.round(n || 0).toLocaleString("ja-JP");
+
+function SpanCalculator() {
+  const [table, setTable] = useState(RAW_TABLE);
+  const [diameter, setDiameter] = useState(450);
+  const [timeOfDay, setTimeOfDay] = useState("day");
+  const [length, setLength] = useState(40);
+  const [drillCount, setDrillCount] = useState(3);
+  const [showTable, setShowTable] = useState(false);
+  const [openDia, setOpenDia] = useState(null);
+
+  const bracket = useMemo(() => {
+    const rows = table[diameter] || [];
+    const L = Number(length) || 0;
+    return rows.find((r) => L >= r.min && L <= r.max) || rows[rows.length - 1];
+  }, [table, diameter, length]);
+
+  const result = useMemo(() => {
+    if (!bracket) return null;
+    const L = Number(length) || 0;
+    const n = Number(drillCount) || 0;
+    const base = timeOfDay === "day" ? bracket.dayBase : bracket.nightBase;
+    const extra = timeOfDay === "day" ? bracket.dayExtra : bracket.nightExtra;
+    const drill = timeOfDay === "day" ? bracket.dayDrill : bracket.nightDrill;
+    const extraTotal = extra * L;
+    const drillTotal = drill * n;
+    const total = base + extraTotal + drillTotal;
+    return { base, extra, extraTotal, drill, drillTotal, total, L, n };
+  }, [bracket, timeOfDay, length, drillCount]);
+
+  const updateCell = (dia, idx, field, value) => {
+    setTable((prev) => {
+      const next = { ...prev };
+      const rows = [...next[dia]];
+      rows[idx] = { ...rows[idx], [field]: value === "" ? 0 : Number(value) };
+      next[dia] = rows;
+      return next;
+    });
+  };
+
+  const pipeR = Math.min(70, 26 + diameter / 22);
+
+  return (
+    <div style={styles.page}>
+      <header style={styles.header}>
+        <div style={styles.headerInner}>
+          <div style={styles.brandRow}>
+            <div style={styles.brandMark}>
+              <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                <circle cx="17" cy="17" r="14" stroke="#C9784A" strokeWidth="2.5" />
+                <circle cx="17" cy="17" r="7.5" stroke="#C9784A" strokeWidth="2.5" />
+              </svg>
+            </div>
+            <div>
+              <div style={styles.brandEyebrow}>管路更生工事 · 積算</div>
+              <h1 style={styles.brandTitle}>スパン単価計算機</h1>
+            </div>
+          </div>
+          <p style={styles.headerSub}>管径・延長・取付管数から、施工路線 1スパン分の請負金額を算出します</p>
+        </div>
+      </header>
+
+      <main style={styles.main}>
+        <section style={styles.calcCard}>
+          <div style={styles.calcGrid}>
+            <div style={styles.inputCol}>
+              <Field label="管径 (mm)" icon={<RulerIcon size={15} />}>
+                <select style={styles.select} value={diameter} onChange={(e) => setDiameter(Number(e.target.value))}>
+                  {DIAMETERS.map((d) => (<option key={d} value={d}>φ{d}</option>))}
+                </select>
+              </Field>
+
+              <Field label="昼 / 夜">
+                <div style={styles.toggleRow}>
+                  <button style={{ ...styles.toggleBtn, ...(timeOfDay === "day" ? styles.toggleBtnActiveDay : {}) }} onClick={() => setTimeOfDay("day")}>
+                    <SunIcon size={14} /> 昼間
+                  </button>
+                  <button style={{ ...styles.toggleBtn, ...(timeOfDay === "night" ? styles.toggleBtnActiveNight : {}) }} onClick={() => setTimeOfDay("night")}>
+                    <MoonIcon size={14} /> 夜間
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="管渠延長（スパン長）m">
+                <input type="number" step="0.1" style={styles.numInput} value={length} onChange={(e) => setLength(e.target.value)} />
+              </Field>
+
+              <Field label="取付管数（本）" icon={<WrenchIcon size={15} />}>
+                <input type="number" step="1" style={styles.numInput} value={drillCount} onChange={(e) => setDrillCount(e.target.value)} />
+              </Field>
+            </div>
+
+            <div style={styles.diagramCol}>
+              <svg viewBox="0 0 320 160" style={{ width: "100%", maxWidth: 320 }}>
+                <line x1="24" y1="80" x2="296" y2="80" stroke="#B9C2CC" strokeWidth="2" strokeDasharray="4 4" />
+                <circle cx="60" cy="80" r={pipeR} fill="none" stroke="#1E2E3F" strokeWidth="3" />
+                <circle cx="60" cy="80" r={Math.max(4, pipeR - 10)} fill="none" stroke="#C9784A" strokeWidth="2" />
+                <circle cx="260" cy="80" r={pipeR} fill="none" stroke="#1E2E3F" strokeWidth="3" />
+                <circle cx="260" cy="80" r={Math.max(4, pipeR - 10)} fill="none" stroke="#C9784A" strokeWidth="2" />
+                <line x1="60" y1="30" x2="260" y2="30" stroke="#2F6F62" strokeWidth="1.5" />
+                <line x1="60" y1="24" x2="60" y2="36" stroke="#2F6F62" strokeWidth="1.5" />
+                <line x1="260" y1="24" x2="260" y2="36" stroke="#2F6F62" strokeWidth="1.5" />
+                <text x="160" y="20" textAnchor="middle" fontFamily="IBM Plex Mono" fontSize="13" fill="#2F6F62">{Number(length || 0).toFixed(1)} m</text>
+                <text x="60" y="130" textAnchor="middle" fontFamily="IBM Plex Mono" fontSize="12" fill="#5B6672">φ{diameter}</text>
+                <text x="260" y="130" textAnchor="middle" fontFamily="IBM Plex Mono" fontSize="12" fill="#5B6672">φ{diameter}</text>
+                {Array.from({ length: Math.min(Number(drillCount) || 0, 8) }).map((_, i) => {
+                  const n = Math.min(Number(drillCount) || 0, 8);
+                  const x = 60 + ((260 - 60) / (n + 1)) * (i + 1);
+                  return (<g key={i}><line x1={x} y1="80" x2={x} y2="58" stroke="#C9784A" strokeWidth="2" /><circle cx={x} cy="58" r="3" fill="#C9784A" /></g>);
+                })}
+              </svg>
+              {bracket ? (
+                <div style={styles.bracketTag}>適用区分：{bracket.min}m 〜 {bracket.max}m</div>
+              ) : (
+                <div style={styles.bracketTagWarn}>該当区分なし</div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {result && (
+          <section style={styles.resultCard}>
+            <div style={styles.resultRow}><span>スパン基礎単価</span><span style={styles.mono}>{yen(result.base)}</span></div>
+            <div style={styles.resultRow}><span>割増単価(m) × 延長 {result.L}m</span><span style={styles.mono}>{yen(result.extra)} × {result.L} = {yen(result.extraTotal)}</span></div>
+            <div style={styles.resultRow}><span>削孔単価 × 取付管 {result.n}本</span><span style={styles.mono}>{yen(result.drill)} × {result.n} = {yen(result.drillTotal)}</span></div>
+            <div style={styles.totalRow}><span>1スパンあたり請負金額</span><span style={styles.totalNum}>{yen(result.total)}</span></div>
+          </section>
+        )}
+
+        <div style={styles.warnBox}>
+          <AlertTriangleIcon size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <p style={{ margin: 0 }}>単価表は提供いただいた資料から転記したものです。念のため、下の「単価表を確認・編集」で原本と見比べ、誤りがあれば修正してください。</p>
+        </div>
+
+        <section style={styles.tableSection}>
+          <button style={styles.tableToggle} onClick={() => setShowTable((s) => !s)}>
+            <Settings2Icon size={16} /> 単価表を確認・編集
+            <ChevronDownIcon size={16} style={{ transform: showTable ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+          </button>
+
+          {showTable && (
+            <div style={styles.tableWrap}>
+              {DIAMETERS.map((dia) => (
+                <div key={dia} style={styles.diaBlock}>
+                  <button style={styles.diaHeader} onClick={() => setOpenDia(openDia === dia ? null : dia)}>
+                    <span style={styles.diaHeaderLabel}>φ{dia}</span>
+                    <ChevronDownIcon size={15} style={{ transform: openDia === dia ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+                  </button>
+                  {openDia === dia && (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={styles.editTable}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>区分(m)</th>
+                            <th style={styles.thGroup} colSpan={3}>昼</th>
+                            <th style={styles.thGroup} colSpan={3}>夜</th>
+                          </tr>
+                          <tr>
+                            <th style={styles.th}></th>
+                            <th style={styles.th}>基礎単価</th><th style={styles.th}>割増(m)</th><th style={styles.th}>削孔単価</th>
+                            <th style={styles.th}>基礎単価</th><th style={styles.th}>割増(m)</th><th style={styles.th}>削孔単価</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {table[dia].map((row, idx) => (
+                            <tr key={idx}>
+                              <td style={styles.tdLabel}>{row.min}〜{row.max}</td>
+                              {["dayBase", "dayExtra", "dayDrill", "nightBase", "nightExtra", "nightDrill"].map((field) => (
+                                <td style={styles.td} key={field}>
+                                  <input type="number" value={row[field]} onChange={(e) => updateCell(dia, idx, field, e.target.value)} style={styles.editInput} />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function Field({ label, icon, children }) {
+  return (
+    <label style={styles.fieldLabel}>
+      <span style={styles.fieldLabelText}>{icon}{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const styles = {
+  page: { minHeight: "100%", background: "#EEF1F0", fontFamily: "'IBM Plex Sans JP', sans-serif", color: "#1E2E3F", paddingBottom: 40 },
+  header: { background: "#1E2E3F", padding: "28px 20px 24px" },
+  headerInner: { maxWidth: 760, margin: "0 auto" },
+  brandRow: { display: "flex", alignItems: "center", gap: 12 },
+  brandMark: { display: "flex" },
+  brandEyebrow: { fontSize: 11, letterSpacing: "0.12em", color: "#8FB3A6", fontFamily: "'IBM Plex Mono', monospace", marginBottom: 2 },
+  brandTitle: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: "#F5F6F4", margin: 0 },
+  headerSub: { color: "#B9C2CC", fontSize: 13, marginTop: 10, marginBottom: 0 },
+  main: { maxWidth: 760, margin: "0 auto", padding: "24px 20px 0" },
+  calcCard: { background: "#FFFFFF", border: "1px solid #D8DDE2", borderRadius: 10, padding: 22 },
+  calcGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 },
+  inputCol: { display: "flex", flexDirection: "column", gap: 16 },
+  diagramCol: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F7F8F6", borderRadius: 8, border: "1px dashed #C7CDD6", padding: 12 },
+  fieldLabel: { display: "flex", flexDirection: "column", gap: 6 },
+  fieldLabelText: { fontSize: 12, fontWeight: 600, color: "#5B6672", display: "flex", alignItems: "center", gap: 6 },
+  select: { padding: "10px 12px", borderRadius: 6, border: "1px solid #C7CDD6", fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, background: "#fff" },
+  numInput: { padding: "10px 12px", borderRadius: 6, border: "1px solid #C7CDD6", fontFamily: "'IBM Plex Mono', monospace", fontSize: 15 },
+  toggleRow: { display: "flex", gap: 8 },
+  toggleBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 10px", borderRadius: 6, border: "1px solid #C7CDD6", background: "#fff", color: "#5B6672", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  toggleBtnActiveDay: { background: "#1E2E3F", color: "#fff", borderColor: "#1E2E3F" },
+  toggleBtnActiveNight: { background: "#2F6F62", color: "#fff", borderColor: "#2F6F62" },
+  bracketTag: { marginTop: 10, fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", background: "#E4EEE9", color: "#2F6F62", padding: "4px 10px", borderRadius: 20 },
+  bracketTagWarn: { marginTop: 10, fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", background: "#FBE7DD", color: "#B5652D", padding: "4px 10px", borderRadius: 20 },
+  resultCard: { background: "#1E2E3F", borderRadius: 10, padding: "20px 22px", marginTop: 20, color: "#EAEDEF" },
+  resultRow: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "#C4CBD3" },
+  totalRow: { display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 14, marginTop: 6 },
+  totalNum: { fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 26, color: "#E29A6C" },
+  mono: { fontFamily: "'IBM Plex Mono', monospace" },
+  warnBox: { display: "flex", gap: 10, background: "#FBE7DD", border: "1px solid #EAC2A8", color: "#7A3E1A", borderRadius: 8, padding: "12px 14px", fontSize: 12.5, lineHeight: 1.6, marginTop: 18 },
+  tableSection: { marginTop: 22, marginBottom: 10 },
+  tableToggle: { display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #C7CDD6", borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 600, color: "#1E2E3F", cursor: "pointer", width: "100%", justifyContent: "center" },
+  tableWrap: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 },
+  diaBlock: { background: "#fff", border: "1px solid #D8DDE2", borderRadius: 8, overflow: "hidden" },
+  diaHeader: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#F7F8F6", border: "none", cursor: "pointer" },
+  diaHeaderLabel: { fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 14 },
+  editTable: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
+  th: { padding: "6px 8px", background: "#EEF1F0", borderBottom: "1px solid #D8DDE2", fontWeight: 600, color: "#5B6672", whiteSpace: "nowrap" },
+  thGroup: { padding: "6px 8px", background: "#E4EEE9", borderBottom: "1px solid #D8DDE2", fontWeight: 700, color: "#2F6F62" },
+  tdLabel: { padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", color: "#5B6672", borderBottom: "1px solid #EEF1F0" },
+  td: { padding: "4px 6px", borderBottom: "1px solid #EEF1F0" },
+  editInput: { width: 76, padding: "5px 6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, border: "1px solid #D8DDE2", borderRadius: 4 },
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<SpanCalculator />);
+</script>
+</body>
+</html>
