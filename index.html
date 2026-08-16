@@ -39,6 +39,17 @@
   .result-row { display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.08); color:#C4CBD3; }
   .total-row { display:flex; justify-content:space-between; align-items:baseline; padding-top:14px; margin-top:6px; }
   .total-num { font-weight:600; font-size:26px; color:#E29A6C; }
+  .total-actions { display:flex; align-items:center; gap:10px; }
+  .add-span-btn-wide { width:100%; margin-top:16px; display:flex; align-items:center; justify-content:center; gap:8px; padding:12px 14px; border-radius:8px; border:none; background:#C9784A; color:#fff; font-size:14px; font-weight:700; cursor:pointer; box-shadow:0 2px 6px rgba(201,120,74,0.4); }
+  .add-span-btn-wide:active { background:#B5652D; }
+  .result-card.result-card-empty { padding:24px 22px; }
+  .multi-total-card { background:#1E2E3F; border-radius:10px; padding:20px 22px; margin-top:20px; color:#EAEDEF; }
+  .multi-total-row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.08); color:#C4CBD3; }
+  .multi-total-main { display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.12); }
+  .multi-total-main .total-num { font-size:28px; }
+  .multi-actions { display:flex; gap:8px; margin-top:14px; }
+  .multi-action-btn { flex:1; padding:9px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#EAEDEF; font-size:13px; font-weight:600; cursor:pointer; }
+  .multi-status { margin-top:8px; font-size:12px; color:#B9C2CC; text-align:right; min-height:1em; }
   .warn-box { display:flex; gap:10px; background:#FBE7DD; border:1px solid #EAC2A8; color:#7A3E1A; border-radius:8px; padding:12px 14px; font-size:12.5px; line-height:1.6; margin-top:18px; }
   .table-section { margin-top:22px; margin-bottom:10px; }
   .table-toggle { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #C7CDD6; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:600; color:#1E2E3F; cursor:pointer; width:100%; justify-content:center; }
@@ -53,6 +64,7 @@
   .edit-table input { width:76px; padding:5px 6px; font-size:12px; border:1px solid #D8DDE2; border-radius:4px; }
   svg.icon { flex-shrink:0; }
   button { font-family:inherit; }
+  .night-icon-red .icon { color:#D32F2F; }
 </style>
 </head>
 <body>
@@ -141,23 +153,52 @@ function yen(n) {
 // ---------------------------------------------------------------------------
 // state
 // ---------------------------------------------------------------------------
+var DEFAULTS = { diameter: 450, timeOfDay: "day", length: "", drillCount: "" };
+
 var state = {
   table: JSON.parse(JSON.stringify(RAW_TABLE)),
-  diameter: 450,
-  timeOfDay: "day",
+  diameter: DEFAULTS.diameter,
+  timeOfDay: DEFAULTS.timeOfDay,
   length: 40,
   drillCount: 3,
+  multiSpanCount: 0,
+  multiSpanTotal: 0,
+  lastSpanAmount: null,
+  multiCopyStatus: "",
   showTable: false,
   openDia: null
 };
 
+function resetInputs() {
+  state.diameter = DEFAULTS.diameter;
+  state.timeOfDay = DEFAULTS.timeOfDay;
+  state.length = DEFAULTS.length;
+  state.drillCount = DEFAULTS.drillCount;
+}
+
 function findBracket() {
   var rows = state.table[state.diameter] || [];
-  var L = Number(state.length) || 0;
+  var L = Math.round((Number(state.length) || 0) * 100) / 100;
+  if (L <= 0) return null; // 延長が未入力(0)の場合は結果を出さない
   for (var i = 0; i < rows.length; i++) {
     if (L >= rows[i].min && L <= rows[i].max) return rows[i];
   }
+  // 表の最大値(100m)を超える延長が入力された場合は、一番延長が長い区分で計算する
   return rows[rows.length - 1] || null;
+}
+
+// 入力された管径を「十の位で四捨五入」したうえで、単価表にある一番近い管径にスナップする
+function snapDiameter(raw) {
+  var n = Number(raw);
+  if (!n || n <= 0) return DIAMETERS[0];
+  var rounded10 = Math.round(n / 10) * 10;
+  var nearest = DIAMETERS[0];
+  var best = Infinity;
+  for (var i = 0; i < DIAMETERS.length; i++) {
+    var d = Math.abs(DIAMETERS[i] - rounded10);
+    if (d < best) { best = d; nearest = DIAMETERS[i]; }
+  }
+  return nearest;
 }
 
 function computeResult(bracket) {
@@ -186,6 +227,7 @@ var ICONS = {
   sun: icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>', 14),
   moon: icon('<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/>', 14),
   settings: icon('<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>', 16),
+  plus: icon('<path d="M12 5v14"/><path d="M5 12h14"/>', 18),
   alert: icon('<path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>', 16),
   chevron: function(open, size) { return icon('<path d="m6 9 6 6 6-6"/>', size || 16).replace('<svg ', '<svg style="transition:transform .2s;transform:' + (open ? 'rotate(180deg)' : 'none') + '" '); }
 };
@@ -216,17 +258,6 @@ function render() {
   var bracketTagHtml = bracket
     ? '<div class="bracket-tag mono">適用区分：' + bracket.min + 'm 〜 ' + bracket.max + 'm</div>'
     : '<div class="bracket-tag warn">該当区分なし</div>';
-
-  var resultHtml = "";
-  if (result) {
-    resultHtml =
-      '<section class="result-card">' +
-        '<div class="result-row"><span>スパン基礎単価</span><span class="mono">' + yen(result.base) + '</span></div>' +
-        '<div class="result-row"><span>割増単価(m) × 延長 ' + result.L + 'm</span><span class="mono">' + yen(result.extra) + ' × ' + result.L + ' = ' + yen(result.extraTotal) + '</span></div>' +
-        '<div class="result-row"><span>削孔単価 × 取付管 ' + result.n + '本</span><span class="mono">' + yen(result.drill) + ' × ' + result.n + ' = ' + yen(result.drillTotal) + '</span></div>' +
-        '<div class="total-row"><span>1スパンあたり請負金額</span><span class="total-num mono">' + yen(result.total) + '</span></div>' +
-      '</section>';
-  }
 
   var tableHtml = "";
   if (state.showTable) {
@@ -282,36 +313,46 @@ function render() {
             '<label class="field-label"><span class="field-label-text">昼 / 夜</span>' +
               '<div class="toggle-row">' +
                 '<button class="toggle-btn' + (state.timeOfDay === "day" ? " active-day" : "") + '" id="f-day">' + ICONS.sun + ' 昼間</button>' +
-                '<button class="toggle-btn' + (state.timeOfDay === "night" ? " active-night" : "") + '" id="f-night">' + ICONS.moon + ' 夜間</button>' +
+                '<button class="toggle-btn' + (state.timeOfDay === "night" ? " active-night night-icon-red" : "") + '" id="f-night">' + (state.timeOfDay === "night" ? ICONS.moon.replace('stroke="currentColor"', 'stroke="#D32F2F"') : ICONS.moon) + ' 夜間</button>' +
               '</div>' +
             '</label>' +
             '<label class="field-label"><span class="field-label-text">管渠延長（スパン長）m</span>' +
               '<input type="number" step="0.1" id="f-length" value="' + state.length + '" />' +
             '</label>' +
-            '<label class="field-label"><span class="field-label-text">' + ICONS.wrench + '取付管数（本）</span>' +
+            '<label class="field-label"><span class="field-label-text">' + ICONS.wrench + '取付管数（削孔数）</span>' +
               '<input type="number" step="1" id="f-drill" value="' + state.drillCount + '" />' +
             '</label>' +
           '</div>' +
           '<div class="diagram-col">' +
-            '<svg viewBox="0 0 320 160" style="width:100%;max-width:320px">' +
-              '<line x1="24" y1="80" x2="296" y2="80" stroke="#B9C2CC" stroke-width="2" stroke-dasharray="4 4"/>' +
-              '<circle cx="60" cy="80" r="' + pipeR + '" fill="none" stroke="#1E2E3F" stroke-width="3"/>' +
-              '<circle cx="60" cy="80" r="' + Math.max(4, pipeR - 10) + '" fill="none" stroke="#C9784A" stroke-width="2"/>' +
-              '<circle cx="260" cy="80" r="' + pipeR + '" fill="none" stroke="#1E2E3F" stroke-width="3"/>' +
-              '<circle cx="260" cy="80" r="' + Math.max(4, pipeR - 10) + '" fill="none" stroke="#C9784A" stroke-width="2"/>' +
-              '<line x1="60" y1="30" x2="260" y2="30" stroke="#2F6F62" stroke-width="1.5"/>' +
-              '<line x1="60" y1="24" x2="60" y2="36" stroke="#2F6F62" stroke-width="1.5"/>' +
-              '<line x1="260" y1="24" x2="260" y2="36" stroke="#2F6F62" stroke-width="1.5"/>' +
-              '<text x="160" y="20" text-anchor="middle" class="mono" font-size="13" fill="#2F6F62">' + Number(state.length || 0).toFixed(1) + ' m</text>' +
-              '<text x="60" y="130" text-anchor="middle" class="mono" font-size="12" fill="#5B6672">φ' + state.diameter + '</text>' +
-              '<text x="260" y="130" text-anchor="middle" class="mono" font-size="12" fill="#5B6672">φ' + state.diameter + '</text>' +
-              drillMarks +
-            '</svg>' +
-            bracketTagHtml +
+            '<div class="field-label-text">' + ICONS.ruler + '管渠延長</div>' +
+            '<div class="mono" style="font-size:22px;font-weight:700;margin-top:4px">' + Number(state.length || 0).toFixed(2) + ' m</div>' +
+            '<div style="margin-top:10px">' + bracketTagHtml + '</div>' +
           '</div>' +
         '</div>' +
       '</section>' +
-      resultHtml +
+      (result ? (
+        '<section class="result-card">' +
+          '<div class="result-row"><span>スパン基礎単価</span><span class="mono">' + yen(result.base) + '</span></div>' +
+          '<div class="result-row"><span>割増単価(m) × 延長 ' + result.L + 'm</span><span class="mono">' + yen(result.extra) + ' × ' + result.L + ' = ' + yen(result.extraTotal) + '</span></div>' +
+          '<div class="result-row"><span>削孔単価 × 削孔数 ' + result.n + '</span><span class="mono">' + yen(result.drill) + ' × ' + result.n + ' = ' + yen(result.drillTotal) + '</span></div>' +
+          '<div class="total-row"><span>1スパンあたり請負金額</span><span class="total-num mono">' + yen(result.total) + '</span></div>' +
+          '<button class="add-span-btn-wide" id="f-add-span">' + ICONS.plus + ' このスパンを合計に追加</button>' +
+        '</section>'
+      ) : (
+        '<section class="result-card result-card-empty">' +
+          '<p style="margin:0;text-align:center;color:#B9C2CC;font-size:13px">管渠延長（スパン長）を入力すると、金額が計算されます</p>' +
+        '</section>'
+      )) +
+      (state.multiSpanCount > 0 ? (
+        '<section class="multi-total-card">' +
+          '<div class="field-label-text">複数スパン合計</div>' +
+          '<div class="multi-total-row"><span>登録スパン数</span><span class="mono">' + state.multiSpanCount + ' スパン</span></div>' +
+          '<div class="multi-total-row"><span>今回追加した1スパン金額</span><span class="mono">' + (state.lastSpanAmount !== null ? yen(state.lastSpanAmount) : "—") + '</span></div>' +
+          '<div class="multi-total-main"><span>複数スパン合計金額</span><span class="total-num mono">' + yen(state.multiSpanTotal) + '</span></div>' +
+          '<div class="multi-actions"><button class="multi-action-btn" id="f-copy-total">コピー</button><button class="multi-action-btn" id="f-reset-total">リセット</button></div>' +
+          '<div class="multi-status">' + escapeHtml(state.multiCopyStatus) + '</div>' +
+        '</section>'
+      ) : '') +
       '<div class="warn-box">' + ICONS.alert + '<p style="margin:0">単価表は提供いただいた資料から転記したものです。念のため、下の「単価表を確認・編集」で原本と見比べ、誤りがあれば修正してください。</p></div>' +
       '<section class="table-section">' +
         '<button class="table-toggle" id="f-show-table">' + ICONS.settings + ' 単価表を確認・編集 ' + ICONS.chevron(state.showTable) + '</button>' +
@@ -338,12 +379,68 @@ function bindEvents() {
   });
   document.getElementById("f-length").addEventListener("input", function(e) {
     state.length = e.target.value;
+  });
+  document.getElementById("f-length").addEventListener("change", function(e) {
+    state.length = e.target.value;
     render();
   });
   document.getElementById("f-drill").addEventListener("input", function(e) {
     state.drillCount = e.target.value;
+  });
+  document.getElementById("f-drill").addEventListener("change", function(e) {
+    state.drillCount = e.target.value;
     render();
   });
+  var addSpan = document.getElementById("f-add-span");
+  if (addSpan) {
+    addSpan.addEventListener("click", function() {
+      var bracket = findBracket();
+      var result = computeResult(bracket);
+      if (!result) return;
+      var amount = Math.round(result.total || 0);
+      state.multiSpanCount += 1;
+      state.multiSpanTotal += amount;
+      state.lastSpanAmount = amount;
+      state.multiCopyStatus = "";
+      resetInputs();
+      render();
+    });
+  }
+  var copyTotal = document.getElementById("f-copy-total");
+  if (copyTotal) {
+    copyTotal.addEventListener("click", function() {
+      var value = yen(state.multiSpanTotal);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function() {
+          state.multiCopyStatus = "コピーしました";
+          render();
+        }).catch(function() {
+          state.multiCopyStatus = "コピーできませんでした";
+          render();
+        });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = value;
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+        state.multiCopyStatus = ok ? "コピーしました" : "コピーできませんでした";
+        render();
+      }
+    });
+  }
+  var resetTotal = document.getElementById("f-reset-total");
+  if (resetTotal) {
+    resetTotal.addEventListener("click", function() {
+      state.multiSpanCount = 0;
+      state.multiSpanTotal = 0;
+      state.lastSpanAmount = null;
+      state.multiCopyStatus = "";
+      render();
+    });
+  }
   document.getElementById("f-show-table").addEventListener("click", function() {
     state.showTable = !state.showTable;
     render();
