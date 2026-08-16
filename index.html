@@ -29,6 +29,7 @@
   .field-label { display:flex; flex-direction:column; gap:6px; }
   .field-label-text { font-size:12px; font-weight:600; color:#5B6672; display:flex; align-items:center; gap:6px; }
   select, input[type=number] { padding:10px 12px; border-radius:6px; border:1px solid #C7CDD6; font-size:15px; width:100%; background:#fff; }
+  input[type=number]::placeholder { color:#B9C2CC; }
   .toggle-row { display:flex; gap:8px; }
   .toggle-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 10px; border-radius:6px; border:1px solid #C7CDD6; background:#fff; color:#5B6672; font-size:13px; font-weight:600; cursor:pointer; }
   .toggle-btn.active-day { background:#1E2E3F; color:#fff; border-color:#1E2E3F; }
@@ -159,8 +160,8 @@ var state = {
   table: JSON.parse(JSON.stringify(RAW_TABLE)),
   diameter: DEFAULTS.diameter,
   timeOfDay: DEFAULTS.timeOfDay,
-  length: 40,
-  drillCount: 3,
+  length: "",
+  drillCount: "",
   multiSpanCount: 0,
   multiSpanTotal: 0,
   lastSpanAmount: null,
@@ -317,15 +318,15 @@ function render() {
               '</div>' +
             '</label>' +
             '<label class="field-label"><span class="field-label-text">管渠延長（スパン長）m</span>' +
-              '<input type="number" step="0.1" id="f-length" value="' + state.length + '" />' +
+              '<input type="number" step="0.01" id="f-length" value="' + state.length + '" placeholder="例：40.00" />' +
             '</label>' +
             '<label class="field-label"><span class="field-label-text">' + ICONS.wrench + '取付管数（削孔数）</span>' +
-              '<input type="number" step="1" id="f-drill" value="' + state.drillCount + '" />' +
+              '<input type="number" step="1" id="f-drill" value="' + state.drillCount + '" placeholder="例：3" />' +
             '</label>' +
           '</div>' +
           '<div class="diagram-col">' +
             '<div class="field-label-text">' + ICONS.ruler + '管渠延長</div>' +
-            '<div class="mono" style="font-size:22px;font-weight:700;margin-top:4px">' + Number(state.length || 0).toFixed(2) + ' m</div>' +
+            '<div class="mono" style="font-size:22px;font-weight:700;margin-top:4px">' + (state.length !== "" ? Number(state.length || 0).toFixed(2) + ' m' : '—') + '</div>' +
             '<div style="margin-top:10px">' + bracketTagHtml + '</div>' +
           '</div>' +
         '</div>' +
