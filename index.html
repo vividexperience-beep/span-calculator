@@ -153,6 +153,14 @@ var RAW_TABLE = {
 
 var DIAMETERS = Object.keys(RAW_TABLE).map(Number).sort(function(a,b){return a-b;});
 
+// ---------------------------------------------------------------------------
+// 常用単価データ（人件費計算用／現場常用・単純常用、昼夜別）
+// ---------------------------------------------------------------------------
+var RAW_LABOR_RATES = {
+  site:   { day: { base: 31400, overtime: 2790 }, night: { base: 35600, overtime: 2790 } }, // 現場常用単価
+  simple: { day: { base: 25700, overtime: 2280 }, night: { base: 29100, overtime: 2280 } }  // 単純常用単価
+};
+
 function yen(n) {
   n = Math.round(n || 0);
   return "¥" + n.toLocaleString("ja-JP");
@@ -174,7 +182,11 @@ var state = {
   lastSpanAmount: null,
   multiCopyStatus: "",
   showTable: false,
-  openDia: null
+  openDia: null,
+  laborRates: JSON.parse(JSON.stringify(RAW_LABOR_RATES)),
+  showLabor: false,
+  showLaborRates: false,
+  labor: { category: "site", timeOfDay: "day", workers: "", days: "", overtimeHours: "" }
 };
 
 function resetInputs() {
@@ -222,6 +234,18 @@ function computeResult(bracket) {
   return { base: base, extra: extra, extraTotal: extraTotal, drill: drill, drillTotal: drillTotal, total: total, L: L, n: n };
 }
 
+function computeLabor() {
+  var workers = Number(state.labor.workers) || 0;
+  var days = Number(state.labor.days) || 0;
+  if (workers <= 0 || days <= 0) return null;
+  var overtimeHours = Number(state.labor.overtimeHours) || 0;
+  var rate = state.laborRates[state.labor.category][state.labor.timeOfDay];
+  var baseTotal = rate.base * workers * days;
+  var overtimeTotal = rate.overtime * overtimeHours;
+  var total = baseTotal + overtimeTotal;
+  return { rateBase: rate.base, rateOvertime: rate.overtime, workers: workers, days: days, overtimeHours: overtimeHours, baseTotal: baseTotal, overtimeTotal: overtimeTotal, total: total };
+}
+
 // ---------------------------------------------------------------------------
 // icons (inline SVG strings)
 // ---------------------------------------------------------------------------
@@ -245,6 +269,88 @@ var ICONS = {
 // ---------------------------------------------------------------------------
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderLaborCard() {
+  var labor = computeLabor();
+  var rateNow = state.laborRates[state.labor.category][state.labor.timeOfDay];
+
+  var resultHtml = labor
+    ? (
+        '<section class="result-card" style="margin-top:14px">' +
+          '<div class="result-row"><span>日当単価 × 人数' + labor.workers + '人 × ' + labor.days + '日</span><span class="mono">' + yen(labor.rateBase) + ' × ' + labor.workers + ' × ' + labor.days + ' = ' + yen(labor.baseTotal) + '</span></div>' +
+          '<div class="result-row"><span>残業単価 × 残業時間 ' + labor.overtimeHours + 'h</span><span class="mono">' + yen(labor.rateOvertime) + ' × ' + labor.overtimeHours + ' = ' + yen(labor.overtimeTotal) + '</span></div>' +
+          '<div class="total-row"><span>人件費 合計</span><span class="total-num mono">' + yen(labor.total) + '</span></div>' +
+        '</section>'
+      )
+    : (
+        '<section class="result-card result-card-empty" style="margin-top:14px">' +
+          '<p style="margin:0;text-align:center;color:#B9C2CC;font-size:13px">作業人数と日数を入力すると、人件費が計算されます</p>' +
+        '</section>'
+      );
+
+  var rateEditHtml = "";
+  if (state.showLaborRates) {
+    var cats = [["site","現場常用"], ["simple","単純常用"]];
+    var tods = [["day","昼"], ["night","夜"]];
+    var rows = "";
+    cats.forEach(function(c) {
+      tods.forEach(function(t) {
+        var r = state.laborRates[c[0]][t[1] === "昼" ? "day" : "night"];
+        rows +=
+          '<tr>' +
+            '<td class="label mono">' + c[1] + ' / ' + t[1] + '</td>' +
+            '<td><input type="number" data-cat="' + c[0] + '" data-tod="' + t[0] + '" data-field="base" value="' + r.base + '" /></td>' +
+            '<td><input type="number" data-cat="' + c[0] + '" data-tod="' + t[0] + '" data-field="overtime" value="' + r.overtime + '" /></td>' +
+          '</tr>';
+      });
+    });
+    rateEditHtml =
+      '<div style="overflow-x:auto;margin-top:10px">' +
+        '<table class="edit-table labor-rate-table">' +
+          '<thead><tr><th>区分</th><th>日当単価</th><th>残業単価(h)</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  return (
+    '<div class="calc-card" style="margin-top:12px">' +
+      '<div class="calc-grid">' +
+        '<div class="input-col">' +
+          '<label class="field-label"><span class="field-label-text">区分</span>' +
+            '<div class="toggle-row">' +
+              '<button class="toggle-btn' + (state.labor.category === "site" ? " active-day" : "") + '" id="f-labor-site">現場常用</button>' +
+              '<button class="toggle-btn' + (state.labor.category === "simple" ? " active-day" : "") + '" id="f-labor-simple">単純常用</button>' +
+            '</div>' +
+          '</label>' +
+          '<label class="field-label"><span class="field-label-text">昼 / 夜</span>' +
+            '<div class="toggle-row">' +
+              '<button class="toggle-btn' + (state.labor.timeOfDay === "day" ? " active-day" : "") + '" id="f-labor-day">' + ICONS.sun + ' 昼間</button>' +
+              '<button class="toggle-btn' + (state.labor.timeOfDay === "night" ? " active-night night-icon-red" : "") + '" id="f-labor-night">' + (state.labor.timeOfDay === "night" ? ICONS.moon.replace('stroke="currentColor"', 'stroke="#D32F2F"') : ICONS.moon) + ' 夜間</button>' +
+            '</div>' +
+          '</label>' +
+          '<label class="field-label"><span class="field-label-text">作業人数（人）</span>' +
+            '<input type="number" step="1" id="f-labor-workers" value="' + state.labor.workers + '" placeholder="例：2" />' +
+          '</label>' +
+          '<label class="field-label"><span class="field-label-text">日数（日）</span>' +
+            '<input type="number" step="0.5" id="f-labor-days" value="' + state.labor.days + '" placeholder="例：5" />' +
+          '</label>' +
+          '<label class="field-label"><span class="field-label-text">残業時間 合計（h・任意）</span>' +
+            '<input type="number" step="0.5" id="f-labor-overtime" value="' + state.labor.overtimeHours + '" placeholder="例：4" />' +
+          '</label>' +
+        '</div>' +
+        '<div class="diagram-col">' +
+          '<div class="field-label-text">現在の日当単価</div>' +
+          '<div class="mono" style="font-size:20px;font-weight:700;margin-top:4px">' + yen(rateNow.base) + ' / 人日</div>' +
+          '<div class="bracket-tag" style="margin-top:10px">残業 ' + yen(rateNow.overtime) + '/h</div>' +
+        '</div>' +
+      '</div>' +
+      resultHtml +
+      '<button class="table-toggle" id="f-show-labor-rates" style="margin-top:12px">' + ICONS.settings + ' 常用単価を確認・編集 ' + ICONS.chevron(state.showLaborRates) + '</button>' +
+      rateEditHtml +
+    '</div>'
+  );
 }
 
 function render() {
@@ -363,6 +469,10 @@ function render() {
       ) : '') +
       '<div class="warn-box">' + ICONS.alert + '<p style="margin:0">単価表は提供いただいた資料から転記したものです。念のため、下の「単価表を確認・編集」で原本と見比べ、誤りがあれば修正してください。</p></div>' +
       '<section class="table-section">' +
+        '<button class="table-toggle" id="f-show-labor">' + ICONS.wrench + ' 人件費を計算する（人工数） ' + ICONS.chevron(state.showLabor) + '</button>' +
+        (state.showLabor ? renderLaborCard() : '') +
+      '</section>' +
+      '<section class="table-section">' +
         '<button class="table-toggle" id="f-show-table">' + ICONS.settings + ' 単価表を確認・編集 ' + ICONS.chevron(state.showTable) + '</button>' +
         tableHtml +
       '</section>' +
@@ -453,6 +563,55 @@ function bindEvents() {
     state.showTable = !state.showTable;
     render();
   });
+
+  var showLaborBtn = document.getElementById("f-show-labor");
+  if (showLaborBtn) {
+    showLaborBtn.addEventListener("click", function() {
+      state.showLabor = !state.showLabor;
+      render();
+    });
+  }
+  var laborSite = document.getElementById("f-labor-site");
+  if (laborSite) laborSite.addEventListener("click", function() { state.labor.category = "site"; render(); });
+  var laborSimple = document.getElementById("f-labor-simple");
+  if (laborSimple) laborSimple.addEventListener("click", function() { state.labor.category = "simple"; render(); });
+  var laborDay = document.getElementById("f-labor-day");
+  if (laborDay) laborDay.addEventListener("click", function() { state.labor.timeOfDay = "day"; render(); });
+  var laborNight = document.getElementById("f-labor-night");
+  if (laborNight) laborNight.addEventListener("click", function() { state.labor.timeOfDay = "night"; render(); });
+  var laborWorkers = document.getElementById("f-labor-workers");
+  if (laborWorkers) {
+    laborWorkers.addEventListener("input", function(e) { state.labor.workers = e.target.value; });
+    laborWorkers.addEventListener("change", function(e) { state.labor.workers = e.target.value; render(); });
+  }
+  var laborDays = document.getElementById("f-labor-days");
+  if (laborDays) {
+    laborDays.addEventListener("input", function(e) { state.labor.days = e.target.value; });
+    laborDays.addEventListener("change", function(e) { state.labor.days = e.target.value; render(); });
+  }
+  var laborOvertime = document.getElementById("f-labor-overtime");
+  if (laborOvertime) {
+    laborOvertime.addEventListener("input", function(e) { state.labor.overtimeHours = e.target.value; });
+    laborOvertime.addEventListener("change", function(e) { state.labor.overtimeHours = e.target.value; render(); });
+  }
+  var showLaborRatesBtn = document.getElementById("f-show-labor-rates");
+  if (showLaborRatesBtn) {
+    showLaborRatesBtn.addEventListener("click", function() {
+      state.showLaborRates = !state.showLaborRates;
+      render();
+    });
+  }
+  var laborRateInputs = document.querySelectorAll(".labor-rate-table input");
+  for (var k = 0; k < laborRateInputs.length; k++) {
+    laborRateInputs[k].addEventListener("change", function(e) {
+      var cat = e.target.getAttribute("data-cat");
+      var tod = e.target.getAttribute("data-tod");
+      var field = e.target.getAttribute("data-field");
+      var val = e.target.value === "" ? 0 : Number(e.target.value);
+      state.laborRates[cat][tod][field] = val;
+      render();
+    });
+  }
   var diaToggles = document.querySelectorAll(".js-dia-toggle");
   for (var i = 0; i < diaToggles.length; i++) {
     diaToggles[i].addEventListener("click", function(e) {
